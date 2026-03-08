@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="루나 아이콘">
+  <rect width="128" height="128" rx="32" fill="#E8B49A"/>
+  <circle cx="64" cy="64" r="28" fill="#FFF8F2"/>
+  <path d="M50 44v42h28v-8H60V44z" fill="#C16F57"/>
+</svg>
