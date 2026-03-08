@@ -1,8 +1,12 @@
 (function () {
     const STORAGE_KEY = 'luna-web-state-v1';
+    const DEFAULT_PROFILE_PHOTO_URL = './luna-default-profile.jpg';
     const DEFAULT_PROFILE = {
         name: '루나',
-        birthDate: '2024-08-21',
+        gender: 'female',
+        genderLabel: '여아',
+        birthDate: '2024-11-28',
+        photoUrl: DEFAULT_PROFILE_PHOTO_URL,
         wakeTime: '07:00',
         napTime: '12:30',
         bedTime: '20:20',
@@ -84,8 +88,10 @@
 
     APP.addEventListener('click', handleAppClick);
     APP.addEventListener('input', handleAppInput);
+    APP.addEventListener('change', handleFormChange);
     APP.addEventListener('submit', handleModalSubmit);
     MODAL_ROOT.addEventListener('click', handleModalClick);
+    MODAL_ROOT.addEventListener('change', handleFormChange);
     MODAL_ROOT.addEventListener('submit', handleModalSubmit);
 
     render();
@@ -113,6 +119,11 @@
         const profile = input && input.profile ? {
             ...fallback.profile,
             ...input.profile,
+            name: DEFAULT_PROFILE.name,
+            gender: DEFAULT_PROFILE.gender,
+            genderLabel: DEFAULT_PROFILE.genderLabel,
+            birthDate: DEFAULT_PROFILE.birthDate,
+            photoUrl: valueOrFallback(input.profile.photoUrl || input.profile.photoDataUrl, fallback.profile.photoUrl),
             favoriteFoods: normalizeList(input.profile.favoriteFoods, fallback.profile.favoriteFoods),
             dislikedFoods: normalizeList(input.profile.dislikedFoods, fallback.profile.dislikedFoods),
             frequentPlaces: normalizeList(input.profile.frequentPlaces, fallback.profile.frequentPlaces),
@@ -186,13 +197,14 @@
                 <div class="hero-panel">
                     <span class="hero-eyebrow">루나 전용 시작 설정</span>
                     <h1 class="hero-title">루나를 위한 웹 육아 보드</h1>
-                    <p class="hero-copy">설치 없이 브라우저에서 바로 쓰는 루나 전용 육아 보드예요. 먼저 기본 리듬만 간단히 적어둘게요.</p>
+                    <p class="hero-copy">설치 없이 브라우저에서 바로 쓰는 루나 전용 육아 보드예요. 루나의 기본 정보는 이미 맞춰두었고, 사진과 생활 리듬만 다듬으면 바로 시작할 수 있어요.</p>
+                    ${renderProfileHero(state.profile, 'welcome')}
                 </div>
                 <section class="surface-card" style="margin-top: 18px;">
                     <div class="section-head">
                         <div>
                             <h2 class="section-title">시작 설정</h2>
-                            <p class="section-note">필수 정보만 채우면 바로 오늘 화면으로 들어가요.</p>
+                            <p class="section-note">루나의 고정 정보는 이미 입력돼 있어요. 생활 리듬과 음식 취향만 가볍게 맞춰주세요.</p>
                         </div>
                     </div>
                     ${renderProfileForm(state.profile, 'onboarding', '시작하기')}
@@ -208,6 +220,7 @@
                     <span class="hero-eyebrow">Luna Daily Web</span>
                     <h1 class="hero-title">루나의 오늘을 브라우저에서 바로 관리해요</h1>
                     <p class="hero-copy">루나 한 명만을 위한 웹 육아 보드예요. 복잡한 통계보다 오늘 흐름, 빠른 기록, 바로 꺼내 보는 도움 카드에 집중했어요.</p>
+                    ${renderProfileHero(state.profile, 'compact')}
                     <div class="hero-metrics">
                         <div class="metric-card"><span class="metric-label">현재 월령</span><strong class="metric-value">${escapeHtml(String(getAgeInMonths(state.profile.birthDate)))}개월</strong></div>
                         <div class="metric-card"><span class="metric-label">고정 도움</span><strong class="metric-value">${escapeHtml(findHelpCard(state.session.pinnedHelpCardId)?.title || '아직 없음')}</strong></div>
@@ -222,6 +235,25 @@
                 </nav>
             </section>
         `;
+    }
+
+    function renderProfileHero(profile, variant) {
+        const isCompact = variant === 'compact';
+        const note = isCompact ? '루나 한 명 기준으로 기본 정보와 프로필 사진을 고정해뒀어요.' : '기본 정보는 이미 채워져 있어요. 사진과 생활 리듬만 맞추면 바로 쓸 수 있어요.';
+        return `
+            <div class="profile-hero${isCompact ? ' compact' : ''}">
+                <img class="profile-avatar ${isCompact ? 'medium' : 'large'}" src="${escapeHtml(profile.photoUrl || DEFAULT_PROFILE.photoUrl)}" alt="루나 프로필 사진">
+                <div class="profile-identity-copy">
+                    <p class="profile-name">${escapeHtml(profile.name)}</p>
+                    <p class="profile-fixed">${escapeHtml(renderFixedProfileMeta(profile))}</p>
+                    <p class="profile-fixed-note">${escapeHtml(note)}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderFixedProfileMeta(profile) {
+        return `${formatBirthDateLong(profile.birthDate)}생 · ${profile.genderLabel}`;
     }
 
     function renderTabButton(tab, label) {
@@ -366,10 +398,25 @@
     function renderProfileForm(profile, mode, submitLabel) {
         return `
             <form class="form-grid" data-form="profile" data-mode="${mode}">
-                <div class="form-split">
-                    <label class="field-group"><span class="field-label">루나 이름</span><input class="field" name="name" required value="${escapeHtml(profile.name)}"></label>
-                    <label class="field-group"><span class="field-label">생년월일</span><input class="field" type="date" name="birthDate" value="${escapeHtml(profile.birthDate)}"></label>
-                </div>
+                <section class="profile-photo-card">
+                    <img class="profile-avatar large" src="${escapeHtml(profile.photoUrl || DEFAULT_PROFILE.photoUrl)}" alt="루나 프로필 사진" data-profile-photo-preview>
+                    <div class="profile-photo-copy">
+                        <p class="profile-name">${escapeHtml(profile.name)}</p>
+                        <p class="profile-fixed">${escapeHtml(renderFixedProfileMeta(profile))}</p>
+                        <p class="section-note">생년월일과 성별은 루나 기준으로 고정돼 있어요. 프로필 사진은 언제든 바꿀 수 있어요.</p>
+                        <input type="hidden" name="photoUrl" value="${escapeHtml(profile.photoUrl || DEFAULT_PROFILE.photoUrl)}">
+                        <input type="hidden" name="photoAction" value="keep">
+                        <div class="profile-photo-actions">
+                            <label class="upload-button">사진 바꾸기<input class="visually-hidden" type="file" name="photoFile" accept="image/*"></label>
+                            <button class="secondary-button" type="button" data-action="reset-photo">기본 사진으로 되돌리기</button>
+                        </div>
+                    </div>
+                </section>
+                <section class="profile-static-card">
+                    <span class="summary-label">고정 기본 정보</span>
+                    <strong class="summary-value">${escapeHtml(renderFixedProfileMeta(profile))}</strong>
+                    <p class="section-note">이 앱은 루나 한 명만을 위한 앱이라 이름, 생년월일, 성별은 따로 입력하지 않아요.</p>
+                </section>
                 <div class="form-split">
                     <label class="field-group"><span class="field-label">보통 기상 시간</span><input class="field" type="time" name="wakeTime" value="${escapeHtml(profile.wakeTime)}"></label>
                     <label class="field-group"><span class="field-label">보통 낮잠 시간</span><input class="field" type="time" name="napTime" value="${escapeHtml(profile.napTime)}"></label>
@@ -381,7 +428,9 @@
                 <div class="form-actions"><button class="primary-button" type="submit">${escapeHtml(submitLabel)}</button>${mode === 'profile' ? '<button class="secondary-button" type="button" data-action="close-modal">닫기</button>' : ''}</div>
             </form>
         `;
-    }    function getLogFormConfig(logType, logId) {
+    }
+
+    function getLogFormConfig(logType, logId) {
         const existingLog = logId ? findLog(logId) : null;
         const editing = Boolean(existingLog);
         const titleMap = { Meal: editing ? '식사 기록 수정' : '식사 기록', Nap: editing ? '낮잠 기록 수정' : '낮잠 기록', Diaper: editing ? '기저귀 기록 수정' : '기저귀 기록', Outing: editing ? '외출 기록 수정' : '외출 기록' };
@@ -442,6 +491,10 @@
             render();
             return;
         }
+        if (action === 'reset-photo') {
+            resetProfilePhoto(target);
+            return;
+        }
         if (action === 'filter-help') {
             UI.helpCategory = target.dataset.category;
             render();
@@ -453,6 +506,23 @@
             UI.helpSearch = event.target.value;
             render();
         }
+    }
+
+    async function handleFormChange(event) {
+        const target = event.target;
+        if (!target || String(target.tagName || '').toUpperCase() !== 'INPUT') return;
+        if (target.name !== 'photoFile') return;
+        const file = target.files && target.files[0];
+        if (!file) return;
+        const form = target.closest('form');
+        if (!form) return;
+        const nextUrl = await readFileAsDataUrl(file);
+        const hidden = form.querySelector('input[name="photoUrl"]');
+        const actionInput = form.querySelector('input[name="photoAction"]');
+        const preview = form.querySelector('[data-profile-photo-preview]');
+        if (hidden) hidden.value = nextUrl;
+        if (actionInput) actionInput.value = 'custom';
+        if (preview) preview.src = nextUrl;
     }
 
     function handleModalClick(event) {
@@ -469,6 +539,10 @@
                 UI.modal = null;
                 render();
             }
+            return;
+        }
+        if (action === 'reset-photo') {
+            resetProfilePhoto(actionTarget);
             return;
         }
         if (action === 'toggle-pin-help') {
@@ -518,9 +592,16 @@
 
     function readProfileForm(form) {
         const data = new FormData(form);
+        const photoAction = String(data.get('photoAction') || 'keep');
+        const photoUrl = photoAction === 'default'
+            ? DEFAULT_PROFILE.photoUrl
+            : valueOrFallback(data.get('photoUrl'), DEFAULT_PROFILE.photoUrl);
         return {
-            name: valueOrFallback(data.get('name'), DEFAULT_PROFILE.name),
-            birthDate: valueOrFallback(data.get('birthDate'), DEFAULT_PROFILE.birthDate),
+            name: DEFAULT_PROFILE.name,
+            gender: DEFAULT_PROFILE.gender,
+            genderLabel: DEFAULT_PROFILE.genderLabel,
+            birthDate: DEFAULT_PROFILE.birthDate,
+            photoUrl,
             wakeTime: valueOrFallback(data.get('wakeTime'), DEFAULT_PROFILE.wakeTime),
             napTime: valueOrFallback(data.get('napTime'), DEFAULT_PROFILE.napTime),
             bedTime: valueOrFallback(data.get('bedTime'), DEFAULT_PROFILE.bedTime),
@@ -528,6 +609,33 @@
             dislikedFoods: parseCsvList(data.get('dislikedFoods'), DEFAULT_PROFILE.dislikedFoods),
             frequentPlaces: parseCsvList(data.get('frequentPlaces'), DEFAULT_PROFILE.frequentPlaces),
         };
+    }
+
+    function resetProfilePhoto(target) {
+        const form = target.closest('form');
+        if (!form) return;
+        const hidden = form.querySelector('input[name="photoUrl"]');
+        const actionInput = form.querySelector('input[name="photoAction"]');
+        const preview = form.querySelector('[data-profile-photo-preview]');
+        const fileInput = form.querySelector('input[name="photoFile"]');
+        if (hidden) hidden.value = DEFAULT_PROFILE.photoUrl;
+        if (actionInput) actionInput.value = 'default';
+        if (preview) preview.src = DEFAULT_PROFILE.photoUrl;
+        if (fileInput) fileInput.value = '';
+    }
+
+    function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || DEFAULT_PROFILE.photoUrl));
+            reader.onerror = () => reject(reader.error || new Error('photo-read-failed'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    function formatBirthDateLong(birthDateText) {
+        const [year, month, day] = String(birthDateText).split('-').map((value) => Number(value || 0));
+        return `${year}년 ${month}월 ${day}일`;
     }
 
     function readLogForm(form) {
@@ -575,7 +683,9 @@
         const note = String(data.get('note') || '').trim();
         const kindOption = findOption(OUTING_KINDS, kind);
         return normalizeLog({ id, type: 'Outing', typeLabel: '외출', title: kindOption.label, detail: [kindOption.label, checklist.join(', ')].filter(Boolean).join(' · '), createdAt, status: null, durationMinutes: null, note: note || null, payload: { kind, checklist, note } });
-    }    function deriveTodayState() {
+    }
+
+    function deriveTodayState() {
         const todayLogs = state.logs.filter((log) => dateKey(log.createdAt) === dateKey(new Date().toISOString()));
         const lastMeal = todayLogs.find((log) => log.type === 'Meal') || null;
         const lastNap = todayLogs.find((log) => log.type === 'Nap') || null;
