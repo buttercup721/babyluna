@@ -79,11 +79,27 @@
         { value: 'mart', label: '마트' },
         { value: 'carRide', label: '차 타기' },
     ];
-    const OUTING_CHECKLIST = ['물', '간식', '기저귀', '물티슈', '여벌옷'];
+    const OUTING_CHECKLIST = ['\uBB3C', '\uAC04\uC2DD', '\uAE30\uC800\uADC0', '\uBB3C\uD2F0\uC288', '\uC5EC\uBC8C\uC637'];
+    const SOUND_PRESETS = {
+        tap: [{ frequency: 660, duration: 0.04, volume: 0.11, type: 'triangle', slideTo: 540 }],
+        select: [{ frequency: 460, duration: 0.05, volume: 0.09, type: 'sine', slideTo: 560 }],
+        type: [{ frequency: 780, duration: 0.018, volume: 0.045, type: 'triangle', slideTo: 730 }],
+        success: [
+            { frequency: 520, duration: 0.05, volume: 0.08, type: 'sine' },
+            { frequency: 720, duration: 0.07, volume: 0.11, type: 'sine', delay: 0.045 },
+        ],
+        delete: [{ frequency: 290, duration: 0.08, volume: 0.1, type: 'triangle', slideTo: 190 }],
+        close: [{ frequency: 430, duration: 0.045, volume: 0.06, type: 'sine', slideTo: 330 }],
+        photo: [
+            { frequency: 640, duration: 0.04, volume: 0.08, type: 'triangle' },
+            { frequency: 860, duration: 0.055, volume: 0.09, type: 'triangle', delay: 0.04 },
+        ],
+    };
 
     const APP = document.getElementById('app');
     const MODAL_ROOT = document.getElementById('modal-root');
     const UI = { activeTab: 'today', helpSearch: '', helpCategory: 'all', modal: null };
+    const SOUND_ENGINE = createSoundEngine();
     let state = loadState();
 
     APP.addEventListener('click', handleAppClick);
@@ -91,6 +107,7 @@
     APP.addEventListener('change', handleFormChange);
     APP.addEventListener('submit', handleModalSubmit);
     MODAL_ROOT.addEventListener('click', handleModalClick);
+    MODAL_ROOT.addEventListener('input', handleAppInput);
     MODAL_ROOT.addEventListener('change', handleFormChange);
     MODAL_ROOT.addEventListener('submit', handleModalSubmit);
 
@@ -186,6 +203,94 @@
         persist();
         render();
     }
+
+    function createSoundEngine() {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        let audioContext = null;
+        let masterGain = null;
+        let lastTypeAt = 0;
+        let disabled = false;
+
+        function ensureContext() {
+            if (disabled || !AudioContextClass) return null;
+            try {
+                if (!audioContext) {
+                    audioContext = new AudioContextClass();
+                    masterGain = audioContext.createGain();
+                    masterGain.gain.value = 0.22;
+                    masterGain.connect(audioContext.destination);
+                }
+                if (audioContext.state === 'suspended') Promise.resolve(audioContext.resume()).catch(() => {});
+                return audioContext;
+            } catch (error) {
+                disabled = true;
+                return null;
+            }
+        }
+
+        function scheduleNote(ctx, preset, startAt) {
+            if (!masterGain) return;
+            const oscillator = ctx.createOscillator();
+            const noteGain = ctx.createGain();
+            const attack = 0.005;
+            const duration = Math.max(0.01, preset.duration || 0.05);
+            const releaseStart = startAt + Math.max(duration * 0.42, attack);
+            const endAt = startAt + duration;
+
+            oscillator.type = preset.type || 'sine';
+            oscillator.frequency.setValueAtTime(preset.frequency || 440, startAt);
+            if (preset.slideTo) oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, preset.slideTo), endAt);
+
+            noteGain.gain.setValueAtTime(0.0001, startAt);
+            noteGain.gain.exponentialRampToValueAtTime(Math.max(0.0002, preset.volume || 0.06), startAt + attack);
+            noteGain.gain.exponentialRampToValueAtTime(0.0001, releaseStart);
+            noteGain.gain.linearRampToValueAtTime(0.00001, endAt + 0.015);
+
+            oscillator.connect(noteGain);
+            noteGain.connect(masterGain);
+            oscillator.start(startAt);
+            oscillator.stop(endAt + 0.02);
+        }
+
+        function playPreset(name) {
+            const preset = SOUND_PRESETS[name];
+            if (!preset || preset.length === 0) return;
+            const ctx = ensureContext();
+            if (!ctx) return;
+            const startAt = ctx.currentTime + 0.01;
+            preset.forEach((note) => scheduleNote(ctx, note, startAt + (note.delay || 0)));
+        }
+
+        return {
+            play(name) {
+                if (!name) return;
+                playPreset(name);
+            },
+            playType() {
+                const now = Date.now();
+                if (now - lastTypeAt < 70) return;
+                lastTypeAt = now;
+                playPreset('type');
+            },
+        };
+    }
+
+    function playUiSound(name) {
+        SOUND_ENGINE.play(name);
+    }
+
+    function playTypingSound() {
+        SOUND_ENGINE.playType();
+    }
+
+    function isTextEntryTarget(target) {
+        const tagName = String(target && target.tagName || '').toUpperCase();
+        if (tagName === 'TEXTAREA') return true;
+        if (tagName !== 'INPUT') return false;
+        const type = String(target.type || 'text').toLowerCase();
+        return ['text', 'search', 'number', 'time', 'email', 'tel', 'url'].includes(type);
+    }
+
     function render() {
         APP.innerHTML = state.session.hasCompletedOnboarding ? renderShell() : renderOnboarding();
         MODAL_ROOT.innerHTML = renderModal();
@@ -468,35 +573,42 @@
         const action = target.dataset.action;
         if (action === 'switch-tab') {
             UI.activeTab = target.dataset.tab;
+            playUiSound('select');
             render();
             return;
         }
         if (action === 'open-profile') {
             UI.modal = { type: 'profile' };
+            playUiSound('tap');
             render();
             return;
         }
         if (action === 'open-log-form') {
             UI.modal = { type: 'log-form', logType: target.dataset.logType, logId: null };
+            playUiSound('tap');
             render();
             return;
         }
         if (action === 'open-help') {
             UI.modal = { type: 'help', cardId: target.dataset.cardId };
+            playUiSound('tap');
             render();
             return;
         }
         if (action === 'open-record') {
             UI.modal = { type: 'record-detail', logId: target.dataset.logId };
+            playUiSound('tap');
             render();
             return;
         }
         if (action === 'reset-photo') {
             resetProfilePhoto(target);
+            playUiSound('select');
             return;
         }
         if (action === 'filter-help') {
             UI.helpCategory = target.dataset.category;
+            playUiSound('select');
             render();
         }
     }
@@ -504,25 +616,42 @@
     function handleAppInput(event) {
         if (event.target.dataset.input === 'help-search') {
             UI.helpSearch = event.target.value;
+            playTypingSound();
             render();
+            return;
         }
+        if (isTextEntryTarget(event.target)) playTypingSound();
     }
 
     async function handleFormChange(event) {
         const target = event.target;
-        if (!target || String(target.tagName || '').toUpperCase() !== 'INPUT') return;
-        if (target.name !== 'photoFile') return;
-        const file = target.files && target.files[0];
-        if (!file) return;
-        const form = target.closest('form');
-        if (!form) return;
-        const nextUrl = await readFileAsDataUrl(file);
-        const hidden = form.querySelector('input[name="photoUrl"]');
-        const actionInput = form.querySelector('input[name="photoAction"]');
-        const preview = form.querySelector('[data-profile-photo-preview]');
-        if (hidden) hidden.value = nextUrl;
-        if (actionInput) actionInput.value = 'custom';
-        if (preview) preview.src = nextUrl;
+        const tagName = String(target && target.tagName || '').toUpperCase();
+        if (tagName === 'SELECT') {
+            playUiSound('select');
+            return;
+        }
+        if (tagName !== 'INPUT') return;
+        const type = String(target.type || '').toLowerCase();
+        if (target.name === 'photoFile') {
+            const file = target.files && target.files[0];
+            if (!file) return;
+            const form = target.closest('form');
+            if (!form) return;
+            try {
+                const nextUrl = await readFileAsDataUrl(file);
+                const hidden = form.querySelector('input[name="photoUrl"]');
+                const actionInput = form.querySelector('input[name="photoAction"]');
+                const preview = form.querySelector('[data-profile-photo-preview]');
+                if (hidden) hidden.value = nextUrl;
+                if (actionInput) actionInput.value = 'custom';
+                if (preview) preview.src = nextUrl;
+                playUiSound('photo');
+            } catch (error) {
+                console.error(error);
+            }
+            return;
+        }
+        if (type === 'radio' || type === 'checkbox') playUiSound('select');
     }
 
     function handleModalClick(event) {
@@ -531,24 +660,28 @@
         const action = actionTarget.dataset.action;
         if (action === 'close-modal') {
             UI.modal = null;
+            playUiSound('close');
             render();
             return;
         }
         if (action === 'close-modal-overlay') {
             if (event.target === actionTarget) {
                 UI.modal = null;
+                playUiSound('close');
                 render();
             }
             return;
         }
         if (action === 'reset-photo') {
             resetProfilePhoto(actionTarget);
+            playUiSound('select');
             return;
         }
         if (action === 'toggle-pin-help') {
             const cardId = actionTarget.dataset.cardId;
             state.session.pinnedHelpCardId = state.session.pinnedHelpCardId === cardId ? null : cardId;
             UI.modal = null;
+            playUiSound('select');
             commit();
             return;
         }
@@ -556,14 +689,16 @@
             const log = findLog(actionTarget.dataset.logId);
             if (!log) return;
             UI.modal = { type: 'log-form', logType: log.type, logId: log.id };
+            playUiSound('tap');
             render();
             return;
         }
         if (action === 'delete-record') {
             const logId = actionTarget.dataset.logId;
-            if (window.confirm('이 기록을 삭제할까요? 삭제하면 다시 복구할 수 없어요.')) {
+            if (window.confirm('? ??? ?????? ???? ?? ??? ? ???.')) {
                 state.logs = state.logs.filter((log) => log.id !== logId);
                 UI.modal = null;
+                playUiSound('delete');
                 commit();
             }
         }
@@ -577,6 +712,7 @@
             state.profile = readProfileForm(form);
             if (form.dataset.mode === 'onboarding') state.session.hasCompletedOnboarding = true;
             UI.modal = null;
+            playUiSound('success');
             commit();
             return;
         }
@@ -585,7 +721,8 @@
             const existingIndex = state.logs.findIndex((log) => log.id === nextLog.id);
             if (existingIndex >= 0) state.logs[existingIndex] = nextLog; else state.logs.push(nextLog);
             state.logs = state.logs.map(normalizeLog).sort(sortLogsDesc);
-            UI.modal = nextLog.type === 'Meal' && nextLog.status === '거부' ? { type: 'help', cardId: 'meal_refusal' } : null;
+            UI.modal = nextLog.type === 'Meal' && nextLog.status === '??' ? { type: 'help', cardId: 'meal_refusal' } : null;
+            playUiSound('success');
             commit();
         }
     }
