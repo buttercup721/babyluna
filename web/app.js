@@ -84,6 +84,7 @@
 
     APP.addEventListener('click', handleAppClick);
     APP.addEventListener('input', handleAppInput);
+    APP.addEventListener('submit', handleModalSubmit);
     MODAL_ROOT.addEventListener('click', handleModalClick);
     MODAL_ROOT.addEventListener('submit', handleModalSubmit);
 
